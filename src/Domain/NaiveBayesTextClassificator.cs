@@ -10,6 +10,9 @@ public sealed class NaiveBayesTextClassificator
 
     private IEnumerable<string> Words => WordProbabilities.Select(w => w.Key.Word);
 
+    internal NaiveBayesTextClassificator()
+    { }
+
     public Sentiment Predict(string text)
     {
         var words = text
