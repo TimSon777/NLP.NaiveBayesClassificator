@@ -17,5 +17,3 @@ finally
 {
     Log.CloseAndFlush();
 }
-
-
