@@ -5,10 +5,17 @@ Log.Logger = new LoggerConfiguration()
     .WriteTo.Console()
     .CreateLogger();
 
-Log.Information("Start");
+try
+{
+    Log.Information("Start");
 
-var path = Path.Combine(Directory.GetCurrentDirectory(), "Texts", args[0]);
+    var path = Path.Combine(Directory.GetCurrentDirectory(), "Texts", args[0]);
 
-await ApplicationRunner.RunAsync(path);
+    await ApplicationRunner.RunAsync(path);
+}
+finally
+{
+    Log.CloseAndFlush();
+}
 
-Log.CloseAndFlush();
+
