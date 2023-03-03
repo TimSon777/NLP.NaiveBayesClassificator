@@ -2,7 +2,7 @@
 
 public sealed class NaiveBayesValidationOptions
 {
-    private double _textOutputProbability;
+    private double _textOutputProbability = 0.75;
     public double TextOutputProbability
     {
         get => _textOutputProbability;
@@ -17,7 +17,7 @@ public sealed class NaiveBayesValidationOptions
         }
     }
 
-    private int _loggingStep;
+    private int _loggingStep = 10;
     public int LoggingStep
     {
         get => _loggingStep;

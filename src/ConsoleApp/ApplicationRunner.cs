@@ -22,7 +22,7 @@ public static class ApplicationRunner
         Log.Information("Validation");
         var validator = new NaiveBayesValidator(options =>
         {
-            options.TextOutputProbability = 0.99;
+            options.TextOutputProbability = 0.01;
             options.LoggingStep = 100;
         });
 

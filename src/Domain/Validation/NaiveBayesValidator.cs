@@ -7,10 +7,11 @@ public sealed class NaiveBayesValidator
 {
     private readonly NaiveBayesValidationOptions _options;
 
-    public NaiveBayesValidator(Action<NaiveBayesValidationOptions> configure = default!)
+    public NaiveBayesValidator(Action<NaiveBayesValidationOptions>? configure = default!)
     {
         _options = new NaiveBayesValidationOptions();
-        configure(_options);
+
+        configure?.Invoke(_options);
     }
 
     public double Validate(NaiveBayesTextClassificator classificator, TextModel[] validationData)
@@ -30,7 +31,7 @@ public sealed class NaiveBayesValidator
                 var actualSentiment = classificator
                     .Predict(validation.Text);
 
-                if (actualSentiment == validation.Sentiment || !(Random.Shared.NextDouble() >= _options.TextOutputProbability))
+                if (actualSentiment == validation.Sentiment || !(Random.Shared.NextDouble() <= _options.TextOutputProbability))
                 {
                     return actualSentiment == validation.Sentiment;
                 }
