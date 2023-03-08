@@ -14,36 +14,61 @@ public sealed class NaiveBayesValidator
         configure?.Invoke(_options);
     }
 
-    public double Validate(NaiveBayesTextClassificator classificator, TextModel[] validationData)
+    public QualityMetrics Validate(NaiveBayesTextClassificator classificator, TextModel[] testData)
     {
-        var step = 0;
-        
-        var correct = validationData
-            .Count(validation =>
+        var correct = 0;
+        var total = testData.Length;
+        var tp = 0;
+        var tn = 0;
+        var fp = 0;
+        var fn = 0;
+
+        for (var index = 0; index < testData.Length; index++)
+        {
+            var test = testData[index];
+            if (index % _options.LoggingStep == 0)
             {
-                if (step % _options.LoggingStep == 0)
-                {
-                    Log.Information("Step: {Step}", step);
-                }
+                Log.Information("Step: {Step}", index);
+            }
 
-                step++;
-        
-                var actualSentiment = classificator
-                    .Predict(validation.Text);
+            var actualSentiment = classificator.Predict(test.Text);
 
-                if (actualSentiment == validation.Sentiment || !(Random.Shared.NextDouble() <= _options.TextOutputProbability))
-                {
-                    return actualSentiment == validation.Sentiment;
-                }
-        
-                Log.Warning("Text was not recognized correctly\nExpected sentiment: {ExpectedSentiment}, but was: {ActualSentiment}\nText: {Text}",
-                    validation.Sentiment,
+            if (actualSentiment != test.Sentiment && Random.Shared.NextDouble() <= _options.TextOutputProbability)
+            {
+                Log.Warning(
+                    "Text was not recognized correctly\nExpected sentiment: {ExpectedSentiment}, but was: {ActualSentiment}\nText: {Text}",
+                    test.Sentiment,
                     actualSentiment,
-                    validation.Text);
+                    test.Text);
+            }
 
-                return actualSentiment == validation.Sentiment;
-            });
+            if (actualSentiment == test.Sentiment)
+            {
+                correct++;
 
-        return correct / (double) validationData.Length;
+                if (actualSentiment == Sentiment.Positive)
+                {
+                    tp++;
+                }
+                else
+                {
+                    tn++;
+                }
+            }
+            else
+            {
+                if (actualSentiment == Sentiment.Positive)
+                {
+                    fp++;
+                }
+                else
+                {
+                    fn++;
+                }
+            }
+        }
+
+
+        return new QualityMetrics(correct, total, tp, fp, tn, fn);
     }
 }

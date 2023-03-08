@@ -26,8 +26,8 @@ public static class ApplicationRunner
             options.LoggingStep = 100;
         });
 
-        var percentage = validator.Validate(classificator, validationData);
-        Log.Information("Validation percentage: {Percentage}", percentage);
+        var qualityMetrics = validator.Validate(classificator, validationData);
+        Log.Information("Quality Metrics\n{QualityMetrics}", qualityMetrics);
     }
 
     private static async Task<TextModel[]> ReadTextsAsync(string path)
