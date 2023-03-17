@@ -78,6 +78,9 @@ public static class ApplicationRunner
 
             options.StemmingEnable = true;
             options.Stemmer = new EnglishStemmer();
+
+            options.ToleranceEnable = false;
+            options.Tolerance = 100000;
         });
 
         foreach (var test in trainData)

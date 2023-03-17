@@ -68,7 +68,6 @@ public sealed class NaiveBayesValidator
             }
         }
 
-
         return new QualityMetrics(correct, total, tp, fp, tn, fn);
     }
 }

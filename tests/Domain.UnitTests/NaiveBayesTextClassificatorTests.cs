@@ -1,4 +1,7 @@
-﻿namespace Domain.UnitTests;
+﻿using Domain.Models;
+using Domain.UnitTests.Builders;
+
+namespace Domain.UnitTests;
 
 public sealed class NaiveBayesTextClassificatorTests
 {
@@ -6,20 +9,11 @@ public sealed class NaiveBayesTextClassificatorTests
     public void Predict_ShouldReturnCorrectSentiment()
     {
         // Arrange
-        var separators = new[] {' '};
-
-        var classificator = new NaiveBayesTextClassificator
-        {
-            UniqueWords = new HashSet<string>
-            {
-                "good",
-                "movie",
-                "not",
-                "a",
-                "did",
-                "like"
-            },
-            WordProbabilities = new Dictionary<(string Word, Sentiment sentiment), double>
+        var classificator = NaiveBayesTextClassificatorTestsBuilder.Create()
+            .WithDefaultOptions()
+            .WithPositiveSentimentTextProbability(0.33)
+            .WithDefaultOptions()
+            .WithWordProbabilities(new Dictionary<WordSentiment, double>
             {
                 {("good", Sentiment.Positive), 0.99},
                 {("movie", Sentiment.Positive), 0.99},
@@ -34,11 +28,8 @@ public sealed class NaiveBayesTextClassificatorTests
                 {("a", Sentiment.Negative), 0.5},
                 {("did", Sentiment.Negative), 0.5},
                 {("like", Sentiment.Negative), 0.5}
-            },
-            WordSeparators = separators,
-            NegativeSentimentTextProbability = 0.67,
-            PositiveSentimentTextProbability = 0.33
-        };
+            })
+            .Build();
 
         // Act
         var actual = classificator.Predict("movie was not good");

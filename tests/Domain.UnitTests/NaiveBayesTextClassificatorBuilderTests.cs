@@ -1,15 +1,27 @@
-﻿using FluentAssertions.Equivalency;
+﻿using Domain.Models;
+using Domain.UnitTests.Builders;
+using FluentAssertions.Equivalency;
 
 namespace Domain.UnitTests;
 
 public sealed class NaiveBayesTextClassificatorBuilderTests
 {
     private readonly NaiveBayesTextClassificatorBuilder _builder;
-    private static readonly IReadOnlyCollection<char> Separators = new[] {' '};
 
     public NaiveBayesTextClassificatorBuilderTests()
     {
-        var builder = NaiveBayesTextClassificatorBuilder.Create()
+        var builder = NaiveBayesTextClassificatorBuilder.Create(options =>
+            {
+                options.ValidChars = "abcdefghijklmnopqrstuvwxyz".ToHashSet();
+                options.Separator = " ";
+                options.Tokenizer = (text, separator) => text
+                    .Split(separator, StringSplitOptions.RemoveEmptyEntries)
+                    .Distinct()
+                    .ToArray();
+
+                options.Tolerance = 100;
+                options.ToleranceEnable = true;
+            })
             .AddText("good movie", Sentiment.Positive)
             .AddText("not a good movie", Sentiment.Negative)
             .AddText("did not like", Sentiment.Negative);
@@ -21,18 +33,10 @@ public sealed class NaiveBayesTextClassificatorBuilderTests
     public void Build_ShouldReturnCorrectBagOfWords()
     {
         // Arrange
-        var expected = new NaiveBayesTextClassificator
-        {
-            UniqueWords = new HashSet<string>
-            {
-                "good",
-                "movie",
-                "not",
-                "a",
-                "did",
-                "like"
-            },
-            WordProbabilities = new Dictionary<(string Word, Sentiment sentiment), double>
+        var expected = NaiveBayesTextClassificatorTestsBuilder.Create()
+            .WithDefaultOptions()
+            .WithPositiveSentimentTextProbability(0.33)
+            .WithWordProbabilities(new Dictionary<WordSentiment, double>
             {
                 {("good", Sentiment.Positive), 0.99},
                 {("movie", Sentiment.Positive), 0.99},
@@ -47,18 +51,27 @@ public sealed class NaiveBayesTextClassificatorBuilderTests
                 {("a", Sentiment.Negative), 0.5},
                 {("did", Sentiment.Negative), 0.5},
                 {("like", Sentiment.Negative), 0.5}
-            },
-            WordSeparators = Separators,
-            NegativeSentimentTextProbability = 0.67,
-            PositiveSentimentTextProbability = 0.33
-        };
+            })
+            .Build();
 
         // Act
-        var classificator = _builder.Build(Separators);
+        var classificator = _builder.Build();
 
         // Assert
         classificator.Should().BeEquivalentTo(expected,
-            options => options.WithPrecision(2));
+            options => options.Excluding(x => x.Options.Lemmitizer)
+                .Excluding(x => x.Options.Stemmer)
+                .Excluding(x => x.Options.LemmitizationEnable)
+                .Excluding(x => x.Options.MaxProbability)
+                .Excluding(x => x.Options.MinProbability)
+                .Excluding(x => x.Options.StemmingEnable)
+                .Excluding(x => x.Options.StopWords)
+                .Excluding(x => x.Options.ExcludeFrequentWords)
+                .Excluding(x => x.Options.ExcludeIdfWords)
+                .Excluding(x => x.Options.ExcludePmiWords)
+                .Excluding(x => x.Options.ExcludeRareWords)
+                .Excluding(x => x.Options.Tokenizer)
+                .WithPrecision(2));
     }
 
     [Fact]
@@ -67,9 +80,9 @@ public sealed class NaiveBayesTextClassificatorBuilderTests
         // Arrange
 
         // Act
-        _builder.Build(Separators);
+        _builder.Build();
 
-        var act = () => _builder.Build(Separators);
+        var act = () => _builder.Build();
 
         // Assert
         act.Should().Throw<InvalidOperationException>();
@@ -92,7 +105,7 @@ public sealed class NaiveBayesTextClassificatorBuilderTests
         // Arrange
 
         // Act
-        _builder.Build(Separators);
+        _builder.Build();
 
         // Assert
         _builder.IsBuild.Should().BeTrue();

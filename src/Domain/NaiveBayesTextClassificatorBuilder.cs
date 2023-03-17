@@ -1,32 +1,6 @@
-﻿using Iveonik.Stemmers;
-using LemmaSharp;
-using Serilog;
+﻿using Domain.Models;
 
 namespace Domain;
-
-public sealed class NaiveBayesTextClassificatorOptions
-{
-    public bool ExcludeStopWordsEnable { get; set; }
-    public HashSet<string> StopWords { get; set; } = default!;
-    public string Separator { get; set; } = " ";
-    public Func<string, string, string[]> Tokenizer { get; set; } = default!;
-    public IReadOnlySet<char> ValidChars { get; set; } = default!;
-    
-    public bool ExcludeRareWords { get; set; }
-    public double MinProbability { get; set; }
-    
-    public bool ExcludeFrequentWords { get; set; }
-    public double MaxProbability { get; set; }
-
-    public bool ExcludePmiWords { get; set; }
-    public double PercentExcludingPmiWords { get; set; }
-    public bool ExcludeIdfWords { get; set; }
-    public double PercentExcludingIdfWords { get; set; }
-    public ILemmatizer Lemmitizer { get; set; } = default!;
-    public bool LemmitizationEnable { get; set; }
-    public bool StemmingEnable { get; set; }
-    public IStemmer Stemmer { get; set; } = default!;
-}
 
 public sealed class NaiveBayesTextClassificatorBuilder
 {
@@ -55,7 +29,7 @@ public sealed class NaiveBayesTextClassificatorBuilder
         return this;
     }
 
-    public NaiveBayesTextClassificator Build(int tolerance = 10000)
+    public NaiveBayesTextClassificator Build()
     {
         if (IsBuild)
         {
@@ -64,13 +38,13 @@ public sealed class NaiveBayesTextClassificatorBuilder
 
         IsBuild = true;
 
-        return InternalBuild(tolerance);
+        return InternalBuild();
     }
 
-    private NaiveBayesTextClassificator InternalBuild(int tolerance)
+    private NaiveBayesTextClassificator InternalBuild()
     {
         var positiveSentimentTextCount = (double) GetTextSentimentCounts(Sentiment.Positive);
-        var negativeSentimentTextCount = (double) GetTextSentimentCounts(Sentiment.Negative);
+        var negativeSentimentTextCount = _textTonalities.Count - positiveSentimentTextCount;
 
         var wordTonalityCounts = new Dictionary<(string Word, Sentiment Sentiment), int>();
 
@@ -97,7 +71,12 @@ public sealed class NaiveBayesTextClassificatorBuilder
             
             foreach (var word in words)
             {
+                var oppositeSentiment = textTonality.Value == Sentiment.Positive
+                    ? Sentiment.Negative
+                    : Sentiment.Positive;
+                
                 wordTonalityCounts[(word, textTonality.Value)] = wordTonalityCounts.GetValueOrDefault((word, textTonality.Value)) + 1;
+                wordTonalityCounts.TryAdd((word, oppositeSentiment), 0);
             }
         }
 
@@ -105,7 +84,7 @@ public sealed class NaiveBayesTextClassificatorBuilder
             .GroupBy(e => e.Key.Word)
             .ToDictionary(e => e.Key, e => e.Sum(x => x.Value));
 
-        var wordSentimentProbabilities = new Dictionary<(string Word, Sentiment), double>();
+        var wordSentimentProbabilities = new Dictionary<WordSentiment, double>();
 
         foreach (var wordTonalityCount in wordTonalityCounts)
         {
@@ -114,16 +93,30 @@ public sealed class NaiveBayesTextClassificatorBuilder
                     ? positiveSentimentTextCount 
                     : negativeSentimentTextCount);
 
-            if ((!_options.ExcludeFrequentWords || probability <= _options.MaxProbability)
-                && (!_options.ExcludeRareWords || probability >= _options.MinProbability))
+            if ((_options.ExcludeFrequentWords && probability > _options.MaxProbability)
+                || (_options.ExcludeRareWords && probability < _options.MinProbability))
             {
-                wordSentimentProbabilities[wordTonalityCount.Key] = probability;
+                continue;
             }
+            
+            if (_options.ToleranceEnable)
+            {
+                if (probability <= double.Epsilon)
+                {
+                    probability = 1 / (double) _options.Tolerance;
+                }
+                else if (Math.Abs(probability - 1) <= double.Epsilon)
+                {
+                    probability = 1 - 1 / (double) _options.Tolerance;
+                }
+            }
+                
+            wordSentimentProbabilities[wordTonalityCount.Key] = probability;
         }
         
         if (_options.ExcludePmiWords)
         {
-            var dict = new Dictionary<(string Word, Sentiment), double>();
+            var dict = new Dictionary<WordSentiment, double>();
             foreach (var wordSentiment in wordSentimentProbabilities)
             {
                 var wordProbability = wordCounts[wordSentiment.Key.Word] / (double) _textTonalities.Count;
@@ -133,14 +126,14 @@ public sealed class NaiveBayesTextClassificatorBuilder
 
             var take = (int) (wordCounts.Count * _options.PercentExcludingPmiWords);
         
-            var goodWordSentiments = dict
+            var elements = dict
                 .OrderBy(e => e.Value)
                 .Take(take)
                 .Select(e => e.Key);
 
-            foreach (var goodWordSentiment in goodWordSentiments)
+            foreach (var e in elements)
             {
-                wordSentimentProbabilities.Remove(goodWordSentiment);
+                wordSentimentProbabilities.Remove(e);
             }
         }
         
@@ -155,21 +148,21 @@ public sealed class NaiveBayesTextClassificatorBuilder
         
             var take = (int) _options.PercentExcludingIdfWords * _textTonalities.Count;
         
-            var bad = dict
+            var elements = dict
                 .OrderByDescending(e => e.Value)
                 .Take(take)
                 .Select(e => e.Key);
 
-            foreach (var bads in bad)
+            foreach (var e in elements)
             {
-                if (wordSentimentProbabilities.ContainsKey((bads, Sentiment.Negative)))
+                if (wordSentimentProbabilities.ContainsKey((e, Sentiment.Negative)))
                 {
-                    wordSentimentProbabilities.Remove((bads, Sentiment.Negative));
+                    wordSentimentProbabilities.Remove((e, Sentiment.Negative));
                 }
                 
-                if (wordSentimentProbabilities.ContainsKey((bads, Sentiment.Positive)))
+                if (wordSentimentProbabilities.ContainsKey((e, Sentiment.Positive)))
                 {
-                    wordSentimentProbabilities.Remove((bads, Sentiment.Positive));
+                    wordSentimentProbabilities.Remove((e, Sentiment.Positive));
                 }
             }
         }
@@ -177,8 +170,7 @@ public sealed class NaiveBayesTextClassificatorBuilder
         return new NaiveBayesTextClassificator
         {
             Options = _options,
-            WordProbabilities = wordSentimentProbabilities.OrderBy(e => e.Key.Item1).ThenBy(e => e.Value).ToDictionary(e => e.Key, e => e.Value),
-            NegativeSentimentTextProbability = negativeSentimentTextCount / _textTonalities.Count,
+            WordProbabilities = wordSentimentProbabilities,
             PositiveSentimentTextProbability = positiveSentimentTextCount / _textTonalities.Count
         };
     }

@@ -1,10 +1,12 @@
-﻿namespace Domain;
+﻿using Domain.Models;
+
+namespace Domain;
 
 public sealed class NaiveBayesTextClassificator
 {
     public required double PositiveSentimentTextProbability { get; init; }
-    public required double NegativeSentimentTextProbability { get; init; }
-    public required IReadOnlyDictionary<(string Word, Sentiment sentiment), double> WordProbabilities { get; init; }
+    public double NegativeSentimentTextProbability => 1 - PositiveSentimentTextProbability;
+    public required IReadOnlyDictionary<WordSentiment, double> WordProbabilities { get; init; }
     public required NaiveBayesTextClassificatorOptions Options { get; set; }
 
     private IEnumerable<string> Words => WordProbabilities.Select(w => w.Key.Word).Distinct();
