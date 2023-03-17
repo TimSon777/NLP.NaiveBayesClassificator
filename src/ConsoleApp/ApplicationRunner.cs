@@ -1,6 +1,8 @@
 ﻿using Domain;
 using Domain.Models;
 using Domain.Validation;
+using Iveonik.Stemmers;
+using LemmaSharp;
 using Serilog;
 using Services;
 
@@ -8,17 +10,22 @@ namespace ConsoleApp;
 
 public static class ApplicationRunner
 {
-    public static async Task RunAsync(string path)
+    public static async Task RunAsync(string pathToTexts, string pathToStopWords, string pathToLemmitization)
     {
+        var stream = File.OpenRead(pathToLemmitization);
+        var lemmitizer = new Lemmatizer(stream);
+        
+        var stopWords = await File.ReadAllLinesAsync(pathToStopWords);
         Log.Information("Reading data");
-        var texts = await ReadTextsAsync(path);
+        var texts = await ReadTextsAsync(pathToTexts);
 
         Log.Information("Split the data into training and validation");
         var (validationData, trainData) = new Randomizer(Random.Shared).RandomDistribute(texts, 0.25);
 
         Log.Information("Train model");
-        var classificator = TrainModel(trainData);
+        var classificator = TrainModel(trainData, stopWords.ToHashSet(), lemmitizer);
 
+        Log.Information("Dictionary size: {Size}", classificator.WordProbabilities.Count);
         Log.Information("Validation");
         var validator = new NaiveBayesValidator(options =>
         {
@@ -43,23 +50,41 @@ public static class ApplicationRunner
             .ToArray();
     }
 
-    private static NaiveBayesTextClassificator TrainModel(IEnumerable<TextModel> trainData)
+    private static NaiveBayesTextClassificator TrainModel(IEnumerable<TextModel> trainData, HashSet<string> stopWords, ILemmatizer lemmitizer)
     {
-        var builder = NaiveBayesTextClassificatorBuilder.Create();
+        var builder = NaiveBayesTextClassificatorBuilder.Create(options =>
+        {
+            options.ValidChars = "abcdefghijklmnopqrstuvwxyz".ToHashSet();
+            options.Separator = " ";
+            options.Tokenizer = (text, separator) => text.Split(separator, StringSplitOptions.RemoveEmptyEntries).Distinct().ToArray();
+            
+            options.ExcludeStopWordsEnable = true;
+            options.StopWords = stopWords;
+            
+            options.ExcludeFrequentWords = true;
+            options.MaxProbability = 0.9;
+            
+            options.ExcludeRareWords = true;
+            options.MinProbability = 0.00001;
 
-        var separators = new[] {' '};
-        var validChars = new HashSet<char>("abcdefghijklmnopqrstuvwxyz'");
+            options.ExcludePmiWords = false;
+            options.PercentExcludingPmiWords = 0.3;
+
+            options.ExcludeIdfWords = false;
+            options.PercentExcludingIdfWords = 0.9;
+
+            options.LemmitizationEnable = false;
+            options.Lemmitizer = lemmitizer;
+
+            options.StemmingEnable = true;
+            options.Stemmer = new EnglishStemmer();
+        });
 
         foreach (var test in trainData)
         {
-            builder.AddText(
-                test.Text
-                    .Replace("<br /><br />", string.Empty)
-                    .ToLower()
-                    .ReplaceInvalid(validChars, ' '),
-                test.Sentiment);
+            builder.AddText(test.Text, test.Sentiment);
         }
 
-        return builder.Build(separators);
+        return builder.Build();
     }
 }

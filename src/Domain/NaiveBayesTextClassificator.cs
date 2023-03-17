@@ -4,22 +4,40 @@ public sealed class NaiveBayesTextClassificator
 {
     public required double PositiveSentimentTextProbability { get; init; }
     public required double NegativeSentimentTextProbability { get; init; }
-    public required IReadOnlyCollection<char> WordSeparators { get; init; }
-    public required HashSet<string> UniqueWords { get; init; }
     public required IReadOnlyDictionary<(string Word, Sentiment sentiment), double> WordProbabilities { get; init; }
+    public required NaiveBayesTextClassificatorOptions Options { get; set; }
 
-    private IEnumerable<string> Words => WordProbabilities.Select(w => w.Key.Word);
+    private IEnumerable<string> Words => WordProbabilities.Select(w => w.Key.Word).Distinct();
 
     internal NaiveBayesTextClassificator()
     { }
 
     public Sentiment Predict(string text)
     {
-        var words = text
-            .Split(WordSeparators)
+        var processedText = text
+            .ToLower()
+            .RemoveHtmlTags(Options.Separator)
+            .ReplaceInvalid(Options.ValidChars, Options.Separator);
+        
+        var words = Options.Tokenizer(processedText, Options.Separator)
             .Distinct()
-            .ToArray();
+            .ToList();
 
+        if (Options.LemmitizationEnable)
+        {
+            words = words.Select(e => Options.Lemmitizer.Lemmatize(e)).Distinct().ToList();
+        }
+        
+        if (Options.StemmingEnable)
+        {
+            words = words.Select(e => Options.Stemmer.Stem(e)).Distinct().ToList();
+        }
+        
+        if (Options.ExcludeStopWordsEnable)
+        {
+            words = words.Except(Options.StopWords).ToList();
+        }
+        
         var positiveProbability = PositiveSentimentTextProbability;
         var negativeProbability = NegativeSentimentTextProbability;
 
@@ -27,19 +45,48 @@ public sealed class NaiveBayesTextClassificator
 
         foreach (var word in words)
         {
-            if (!UniqueWords.Contains(word))
+            if (WordProbabilities.TryGetValue((word, Sentiment.Positive), out var positive))
             {
-                continue;
+                positiveProbability *= positive;
             }
             
-            positiveProbability *= WordProbabilities[(word, Sentiment.Positive)];
-            negativeProbability *= WordProbabilities[(word, Sentiment.Negative)];
+            if (positiveProbability <= double.Epsilon)
+            {
+                return Sentiment.Negative;
+            }
+            
+            if (WordProbabilities.TryGetValue((word, Sentiment.Negative), out var negative))
+            {
+                negativeProbability *= negative;
+            }
+
+            if (negativeProbability <= double.Epsilon)
+            {
+                return Sentiment.Positive;
+            }
         }
 
         foreach (var word in notPresentedWords)
         {
-            positiveProbability *= 1 - WordProbabilities[(word, Sentiment.Positive)];
-            negativeProbability *= 1 - WordProbabilities[(word, Sentiment.Negative)];
+            if (WordProbabilities.TryGetValue((word, Sentiment.Positive), out var positive))
+            {
+                positiveProbability *= 1 - positive;
+            }
+            
+            if (positiveProbability <= double.Epsilon)
+            {
+                return Sentiment.Negative;
+            }
+            
+            if (WordProbabilities.TryGetValue((word, Sentiment.Negative), out var negative))
+            {
+                negativeProbability *= 1 - negative;
+            }
+            
+            if (negativeProbability <= double.Epsilon)
+            {
+                return Sentiment.Positive;
+            }
         }
         
         return positiveProbability >= negativeProbability
